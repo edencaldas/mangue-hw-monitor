@@ -69,6 +69,39 @@ def read_gpu_voltage(hwmon_dir):
         pass
     return 0.0
 
+def read_gpu_fan(hwmon_dir):
+    # Try reading RPM first
+    rpm_path = os.path.join(hwmon_dir, "fan1_input")
+    try:
+        if os.path.exists(rpm_path):
+            with open(rpm_path, 'r') as f:
+                val = float(f.read().strip())
+                if val > 0:
+                    return val, "rpm"
+    except Exception:
+        pass
+
+    # Fallback to PWM percentage
+    pwm_path = os.path.join(hwmon_dir, "pwm1")
+    try:
+        if os.path.exists(pwm_path):
+            with open(pwm_path, 'r') as f:
+                pwm_val = float(f.read().strip())
+            
+            pwm_max = 255.0
+            max_path = os.path.join(hwmon_dir, "pwm1_max")
+            if os.path.exists(max_path):
+                with open(max_path, 'r') as f:
+                    pwm_max = float(f.read().strip())
+            
+            if pwm_max > 0:
+                pct = (pwm_val / pwm_max) * 100.0
+                return pct, "pwm"
+    except Exception:
+        pass
+
+    return 0.0, "none"
+
 def color_value(val, warn_limit, crit_limit, width, format_spec=".1f"):
     val_str = f"{val:{width}{format_spec}}"
     if val <= 0.0:
@@ -91,9 +124,9 @@ def main():
     print(f"Located GPU HWMON at:  {hwmon_dir}")
     print(f"Writing to:            {os.path.abspath(CSV_PATH)}")
     print("Press Ctrl+C to stop.")
-    print("-" * 146)
-    print(f"{'Time':19} | {'Power (W)':9} | {'Volt (V)':8} | {'Edge (°C)':9} | {'Junct (°C)':10} | {'Mem (°C)':8} | {'Fan (RPM)':9} | {'GFX (MHz)':9} | {'VRAM Clk (MHz)':14} | {'VRAM (Used/Total)':17} | {'GTT (Used/Total)':16}")
-    print("-" * 146)
+    print("-" * 148)
+    print(f"{'Time':19} | {'Power (W)':9} | {'Volt (V)':8} | {'Edge (°C)':9} | {'Junct (°C)':10} | {'Mem (°C)':8} | {'Fan (RPM/%)':11} | {'GFX (MHz)':9} | {'VRAM Clk (MHz)':14} | {'VRAM (Used/Total)':17} | {'GTT (Used/Total)':16}")
+    print("-" * 148)
 
     # Initialize CSV if it doesn't exist
     if not os.path.exists(CSV_PATH):
@@ -110,7 +143,7 @@ def main():
             temp_edge = read_sysfs(hwmon_dir, "temp1_input", 1000)
             temp_junc = read_sysfs(hwmon_dir, "temp2_input", 1000)
             temp_mem = read_sysfs(hwmon_dir, "temp3_input", 1000)
-            fan = read_sysfs(hwmon_dir, "fan1_input")
+            fan, fan_type = read_gpu_fan(hwmon_dir)
             gfx_freq = read_sysfs(hwmon_dir, "freq1_input", 1000000)
             vram_freq = read_sysfs(hwmon_dir, "freq2_input", 1000000)
 
@@ -127,9 +160,14 @@ def main():
             junc_str = color_value(temp_junc, 85.0, 95.0, 10, ".1f") if temp_junc > 0 else f"{'N/A':>10}"
             mem_str  = color_value(temp_mem, 85.0, 95.0, 8, ".1f") if temp_mem > 0 else f"{'N/A':>8}"
             
-            # Check if fan sensor exists physically (so 0 RPM is shown as 0 instead of N/A)
-            fan_exists = os.path.exists(os.path.join(hwmon_dir, "fan1_input"))
-            fan_str  = f"{fan:9.0f}" if fan_exists else f"{'N/A':>9}"
+            # Fan speed formatting (RPM or PWM percentage fallback)
+            if fan_type == "rpm":
+                fan_str = f"{fan:11.0f}"
+            elif fan_type == "pwm":
+                fan_str = f"{fan:10.0f}%"
+            else:
+                fan_exists = os.path.exists(os.path.join(hwmon_dir, "fan1_input")) or os.path.exists(os.path.join(hwmon_dir, "pwm1"))
+                fan_str = f"{'0%':>11}" if fan_exists else f"{'N/A':>11}"
             
             gfx_str  = f"{gfx_freq:9.0f}"
             vram_clk_str = f"{vram_freq:14.0f}" if vram_freq > 0 else f"{'N/A':>14}"

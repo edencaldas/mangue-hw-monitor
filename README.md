@@ -14,12 +14,16 @@ To monitor both CPU and GPU metrics in real-time, open two separate terminal tab
 ```bash
 ./mangue_monitor_gpu.py
 ```
-* **Telemetry tracked:** Board Power Draw (W), Edge Temp (°C), Junction Temp (°C), VRAM Temp (°C), Fan Speed (RPM), GFX Core Frequency (MHz), VRAM Memory Clock Speed (MHz), VRAM Allocation (Used/Total MB), and GTT System Memory Allocation (Used/Total MB).
+* **Telemetry tracked:** Board Power Draw (W), Core Graphics Voltage (V), Edge Temp (°C), Junction Temp (°C), VRAM Temp (°C), Fan Speed (RPM), GFX Core Frequency (MHz), VRAM Memory Clock Speed (MHz), VRAM Allocation (Used/Total MB), and GTT System Memory Allocation (Used/Total MB).
 * **Disk log file:** `gpu_monitor_log.csv`
 
 ### 2. Start the CPU Monitor (Tab 2)
 ```bash
+# Standard user run (Power and Volt will show N/A unless zenpower is loaded)
 ./mangue_monitor_cpu.py
+
+# Root user run (unlocks real-time CPU Package Power via RAPL fallback!)
+sudo ./mangue_monitor_cpu.py
 ```
 * **Telemetry tracked:** Average CPU Load (%), Core Temperatures (`Tctl` and `Tccd` in °C), Average Core Frequency (MHz), Core Power (W), SVI2 Core Voltage (V), System RAM Allocation (Used/Total GB), Swap Allocation (Used/Total GB), and individual load percentages for all logical threads.
 * **Disk log file:** `cpu_monitor_log.csv`
@@ -30,6 +34,7 @@ To monitor both CPU and GPU metrics in real-time, open two separate terminal tab
 
 ### GPU Telemetry Console
 * **Power (W):** Real-time board power consumption.
+* **Volt (V):** Core graphics engine voltage (VDDGFX) in Volts (e.g. `0.875 V`).
 * **Edge (°C):** Primary GPU package core temperature.
 * **Junct (°C):** Silicon junction temperature (hottest spot on die). Displays `N/A` on older cards like the RX 550.
 * **Mem (°C):** Graphic VRAM memory temperature. Displays `N/A` on older cards like the RX 550.
@@ -44,8 +49,8 @@ To monitor both CPU and GPU metrics in real-time, open two separate terminal tab
 * **Tctl (°C):** Main CPU thermal control sensor.
 * **Tccd (°C):** Core Complex Die temperature.
 * **Avg Freq (MHz):** Average real-time frequency across all threads.
-* **Power (W):** CPU Core Power (requires the `zenpower` module; displays `N/A` under standard `k10temp`).
-* **Volt (V):** CPU Core SVI2 Voltage (requires the `zenpower` module; displays `N/A` under standard `k10temp`).
+* **Power (W):** CPU Package Power. Under normal users, it requires `zenpower`. **If run under `sudo`, the script uses the RAPL fallback** to read and calculate CPU Package Power dynamically.
+* **Volt (V):** CPU Core SVI2 Voltage (requires the `zenpower` module; displays `N/A` under standard `k10temp` even with `sudo`).
 * **RAM (Used/Total):** System RAM utilization in GB.
 * **Core Loads:** Visual thread utilization indicator in brackets (e.g. `[003509*00115]` represents thread load from 0-9 scale, with `*` representing 100% load).
 

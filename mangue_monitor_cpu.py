@@ -4,6 +4,8 @@ import os
 import sys
 
 CSV_PATH = "cpu_monitor_log.csv"
+RAPL_ENERGY_FILE = "/sys/class/powercap/intel-rapl/intel-rapl:0/energy_uj"
+rapl_state = {"prev_energy": 0.0, "prev_time": 0.0}
 
 def find_cpu_hwmon_dirs():
     # Scan hwmon directories to find k10temp or zenpower dynamically
@@ -71,6 +73,28 @@ def read_cpu_temps(hwmon_dirs):
                     
     return tctl, tccd
 
+def read_rapl_power():
+    global rapl_state
+    if not os.path.exists(RAPL_ENERGY_FILE):
+        return 0.0
+    try:
+        with open(RAPL_ENERGY_FILE, 'r') as f:
+            curr_energy = float(f.read().strip())
+        curr_time = time.time()
+        
+        power = 0.0
+        if rapl_state["prev_energy"] > 0.0 and curr_time > rapl_state["prev_time"]:
+            diff_energy = curr_energy - rapl_state["prev_energy"]
+            diff_time = curr_time - rapl_state["prev_time"]
+            power = (diff_energy / diff_time) / 1000000.0  # uJ to W
+        
+        # Update state
+        rapl_state["prev_energy"] = curr_energy
+        rapl_state["prev_time"] = curr_time
+        return power
+    except Exception:
+        return 0.0
+
 def read_cpu_power_voltage(hwmon_dirs):
     power = 0.0
     voltage = 0.0
@@ -114,6 +138,11 @@ def read_cpu_power_voltage(hwmon_dirs):
                         power = float(file.read().strip()) / 1000000.0  # uW to W
             except Exception:
                 pass
+
+    # Fallback to CPU RAPL package power if zenpower power is not available (e.g. running under sudo)
+    if power == 0.0:
+        power = read_rapl_power()
+        
     return power, voltage
 
 def get_cpu_freqs():
@@ -233,8 +262,9 @@ def main():
     print(f"{'Time':19} | {'Avg Load':8} | {'Tctl (°C)':9} | {'Tccd (°C)':9} | {'Avg Freq (MHz)':14} | {'Power (W)':9} | {'Volt (V)':8} | {'RAM (Used/Total)':16} | Core Loads")
     print("-" * 125)
 
-    # Prime CPU ticks
+    # Prime CPU ticks and RAPL state
     prev_stats = read_proc_stat()
+    read_rapl_power()
     time.sleep(1)
 
     try:

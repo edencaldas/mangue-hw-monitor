@@ -126,7 +126,11 @@ def main():
             edge_str = color_value(temp_edge, 75.0, 85.0, 9, ".1f")
             junc_str = color_value(temp_junc, 85.0, 95.0, 10, ".1f") if temp_junc > 0 else f"{'N/A':>10}"
             mem_str  = color_value(temp_mem, 85.0, 95.0, 8, ".1f") if temp_mem > 0 else f"{'N/A':>8}"
-            fan_str  = f"{fan:9.0f}" if fan > 0 else f"{'N/A':>9}"
+            
+            # Check if fan sensor exists physically (so 0 RPM is shown as 0 instead of N/A)
+            fan_exists = os.path.exists(os.path.join(hwmon_dir, "fan1_input"))
+            fan_str  = f"{fan:9.0f}" if fan_exists else f"{'N/A':>9}"
+            
             gfx_str  = f"{gfx_freq:9.0f}"
             vram_clk_str = f"{vram_freq:14.0f}" if vram_freq > 0 else f"{'N/A':>14}"
             

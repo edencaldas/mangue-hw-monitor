@@ -5,49 +5,72 @@ import sys
 
 CSV_PATH = "cpu_monitor_log.csv"
 
-def find_k10temp_dir():
-    # Scan hwmon directories to find k10temp dynamically
+def find_cpu_hwmon_dirs():
+    # Scan hwmon directories to find k10temp or zenpower dynamically
     base_dir = "/sys/class/hwmon"
+    paths = []
     if not os.path.exists(base_dir):
-        return None
+        return paths
     for hwmon in os.listdir(base_dir):
         path = os.path.join(base_dir, hwmon)
         name_file = os.path.join(path, "name")
         if os.path.exists(name_file):
             try:
                 with open(name_file, 'r') as f:
-                    if f.read().strip() == "k10temp":
-                        return path
+                    drv_name = f.read().strip()
+                    if drv_name in ("k10temp", "zenpower"):
+                        paths.append((drv_name, path))
             except Exception:
                 continue
-    return None
+    return paths
 
-def read_cpu_temps(hwmon_dir):
-    if not hwmon_dir:
+def read_cpu_temps(hwmon_dirs):
+    if not hwmon_dirs:
         return 0.0, 0.0
     tctl = 0.0
     tccd = 0.0
-    try:
-        for f in os.listdir(hwmon_dir):
-            if f.endswith("_label"):
-                label_path = os.path.join(hwmon_dir, f)
-                with open(label_path, 'r') as file:
-                    label = file.read().strip()
-                
-                prefix = f[:-6]  # Extract prefix like 'temp1' from 'temp1_label'
-                input_path = os.path.join(hwmon_dir, f"{prefix}_input")
-                
-                if os.path.exists(input_path):
-                    with open(input_path, 'r') as file:
-                        val = float(file.read().strip()) / 1000.0
+    
+    # Sort to prioritize zenpower over k10temp if both are present
+    sorted_dirs = sorted(hwmon_dirs, key=lambda x: 0 if x[0] == "zenpower" else 1)
+    
+    for drv_name, path in sorted_dirs:
+        try:
+            for f in os.listdir(path):
+                if f.endswith("_label"):
+                    label_path = os.path.join(path, f)
+                    with open(label_path, 'r') as file:
+                        label = file.read().strip()
                     
-                    if label == "Tctl":
-                        tctl = val
-                    elif label == "Tccd1":
-                        tccd = val
-    except Exception:
-        pass
+                    prefix = f[:-6]  # Extract prefix like 'temp1' from 'temp1_label'
+                    input_path = os.path.join(path, f"{prefix}_input")
+                    
+                    if os.path.exists(input_path):
+                        with open(input_path, 'r') as file:
+                            val = float(file.read().strip()) / 1000.0
+                        
+                        # Match Tctl or Tdie for main CPU temp
+                        if label in ("Tctl", "Tdie") and tctl == 0.0:
+                            tctl = val
+                        # Match Tccd1 or general Tccd label for Core Complex temp
+                        elif (label == "Tccd1" or "Tccd" in label) and tccd == 0.0:
+                            tccd = val
+        except Exception:
+            pass
+
+    # Fallback to temp1_input if no label matching succeeded
+    if tctl == 0.0:
+        for drv_name, path in sorted_dirs:
+            fallback_path = os.path.join(path, "temp1_input")
+            if os.path.exists(fallback_path):
+                try:
+                    with open(fallback_path, 'r') as file:
+                        tctl = float(file.read().strip()) / 1000.0
+                        break
+                except Exception:
+                    pass
+                    
     return tctl, tccd
+
 
 
 def get_cpu_freqs():
@@ -109,11 +132,12 @@ def calculate_cpu_load(prev_ticks, curr_ticks):
     return loads
 
 def main():
-    hwmon_dir = find_k10temp_dir()
-    if not hwmon_dir:
-        print("Warning: k10temp sensor directory not found. CPU temperatures will not be logged.")
+    hwmon_dirs = find_cpu_hwmon_dirs()
+    if not hwmon_dirs:
+        print("Warning: Neither k10temp nor zenpower sensor directory found. CPU temperatures will not be logged.")
     else:
-        print(f"Located k10temp sensor at: {hwmon_dir}")
+        paths_str = ", ".join([f"{drv_name} ({path})" for drv_name, path in hwmon_dirs])
+        print(f"Located CPU sensor(s) at: {paths_str}")
 
     # Set up CSV Header with individual core columns (assuming 12 threads)
     if not os.path.exists(CSV_PATH):
@@ -143,7 +167,7 @@ def main():
 
             # Core Metrics
             avg_load = loads.get("cpu", 0.0)
-            tctl, tccd = read_cpu_temps(hwmon_dir)
+            tctl, tccd = read_cpu_temps(hwmon_dirs)
             avg_freq = get_cpu_freqs()
 
             # Compile individual core loads (cpu0 to cpu11)

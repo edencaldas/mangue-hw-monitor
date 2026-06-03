@@ -3,6 +3,7 @@ import time
 import os
 import sys
 
+VERSION = "0.1.0"
 CSV_PATH = "cpu_monitor_log.csv"
 RAPL_ENERGY_FILE = "/sys/class/powercap/intel-rapl/intel-rapl:0/energy_uj"
 rapl_state = {"prev_energy": 0.0, "prev_time": 0.0}
@@ -234,6 +235,18 @@ def color_value(val, warn_limit, crit_limit, width, format_spec=".1f"):
         return f"\033[1m\033[33m{val_str}\033[0m"  # Bold Yellow
     return val_str
 
+def check_and_migrate_csv(csv_path, headers):
+    if os.path.exists(csv_path):
+        try:
+            with open(csv_path, 'r') as f:
+                first_line = f.readline().strip()
+            if first_line != ",".join(headers):
+                backup_path = csv_path.replace(".csv", f"_backup_{int(time.time())}.csv")
+                print(f"CSV schema mismatch detected. Backing up old log to: {os.path.basename(backup_path)}")
+                os.rename(csv_path, backup_path)
+        except Exception:
+            pass
+
 def main():
     hwmon_dirs = find_cpu_hwmon_dirs()
     if not hwmon_dirs:
@@ -243,19 +256,23 @@ def main():
         print(f"Located CPU sensor(s) at: {paths_str}")
 
     # Set up CSV Header with individual core columns (assuming 12 threads)
+    headers = [
+        "timestamp", "script_version", "cpu_avg_load", "temp_tctl", "temp_tccd", 
+        "avg_freq_mhz", "cpu_power_w", "cpu_volt_v",
+        "ram_used_gb", "ram_total_gb", "ram_pct",
+        "swap_used_gb", "swap_total_gb"
+    ]
+    for i in range(12):
+        headers.append(f"cpu{i}_load")
+
+    # Migrate log if schema changed
+    check_and_migrate_csv(CSV_PATH, headers)
+
     if not os.path.exists(CSV_PATH):
         with open(CSV_PATH, 'w') as f:
-            headers = [
-                "timestamp", "cpu_avg_load", "temp_tctl", "temp_tccd", 
-                "avg_freq_mhz", "cpu_power_w", "cpu_volt_v",
-                "ram_used_gb", "ram_total_gb", "ram_pct",
-                "swap_used_gb", "swap_total_gb"
-            ]
-            for i in range(12):
-                headers.append(f"cpu{i}_load")
             f.write(",".join(headers) + "\n")
 
-    print(f"Starting CPU Telemetry Logger...")
+    print(f"Starting CPU Telemetry Logger v{VERSION}...")
     print(f"Writing to: {os.path.abspath(CSV_PATH)}")
     print("Press Ctrl+C to stop.")
     print("-" * 125)
@@ -317,7 +334,7 @@ def main():
             # Write to CSV and bypass OS caching
             with open(CSV_PATH, 'a') as f:
                 csv_line = (
-                    f"{t_str},{avg_load:.2f},{tctl:.1f},{tccd:.1f},{avg_freq:.1f},"
+                    f"{t_str},{VERSION},{avg_load:.2f},{tctl:.1f},{tccd:.1f},{avg_freq:.1f},"
                     f"{cpu_power:.2f},{cpu_volt:.3f},{mem_used:.2f},{mem_total:.2f},{mem_pct:.1f},"
                     f"{swap_used:.2f},{swap_total:.2f}," + ",".join(core_csv_values) + "\n"
                 )

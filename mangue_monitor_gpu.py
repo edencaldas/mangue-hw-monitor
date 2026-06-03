@@ -3,6 +3,7 @@ import time
 import os
 import sys
 
+VERSION = "0.1.0"
 CSV_PATH = "gpu_monitor_log.csv"
 
 def find_gpu_paths():
@@ -112,6 +113,18 @@ def color_value(val, warn_limit, crit_limit, width, format_spec=".1f"):
         return f"\033[1m\033[33m{val_str}\033[0m"  # Bold Yellow
     return val_str
 
+def check_and_migrate_csv(csv_path, headers):
+    if os.path.exists(csv_path):
+        try:
+            with open(csv_path, 'r') as f:
+                first_line = f.readline().strip()
+            if first_line != ",".join(headers):
+                backup_path = csv_path.replace(".csv", f"_backup_{int(time.time())}.csv")
+                print(f"CSV schema mismatch detected. Backing up old log to: {os.path.basename(backup_path)}")
+                os.rename(csv_path, backup_path)
+        except Exception:
+            pass
+
 def main():
     device_path, hwmon_dir = find_gpu_paths()
     if not hwmon_dir:
@@ -119,7 +132,7 @@ def main():
         print("Please check if your GPU is running and using the amdgpu driver.")
         sys.exit(1)
 
-    print(f"Starting GPU Telemetry Logger...")
+    print(f"Starting GPU Telemetry Logger v{VERSION}...")
     print(f"Located GPU Device at: {device_path}")
     print(f"Located GPU HWMON at:  {hwmon_dir}")
     print(f"Writing to:            {os.path.abspath(CSV_PATH)}")
@@ -128,10 +141,20 @@ def main():
     print(f"{'Time':19} | {'Power (W)':9} | {'Volt (V)':8} | {'Edge (°C)':9} | {'Junct (°C)':10} | {'Mem (°C)':8} | {'Fan (RPM/%)':11} | {'GFX (MHz)':9} | {'VRAM Clk (MHz)':14} | {'VRAM (Used/Total)':17} | {'GTT (Used/Total)':16}")
     print("-" * 148)
 
+    # Expected headers
+    headers = [
+        "timestamp", "script_version", "power_watts", "gpu_volt_v", "edge_temp_c", 
+        "junction_temp_c", "memory_temp_c", "fan_rpm", "gfx_freq_mhz", "vram_freq_mhz", 
+        "vram_used_mb", "vram_total_mb", "gtt_used_mb", "gtt_total_mb"
+    ]
+
+    # Migrate log if schema changed
+    check_and_migrate_csv(CSV_PATH, headers)
+
     # Initialize CSV if it doesn't exist
     if not os.path.exists(CSV_PATH):
         with open(CSV_PATH, 'w') as f:
-            f.write("timestamp,power_watts,gpu_volt_v,edge_temp_c,junction_temp_c,memory_temp_c,fan_rpm,gfx_freq_mhz,vram_freq_mhz,vram_used_mb,vram_total_mb,gtt_used_mb,gtt_total_mb\n")
+            f.write(",".join(headers) + "\n")
 
     try:
         while True:
@@ -159,6 +182,8 @@ def main():
             edge_str = color_value(temp_edge, 75.0, 85.0, 9, ".1f")
             junc_str = color_value(temp_junc, 85.0, 95.0, 10, ".1f") if temp_junc > 0 else f"{'N/A':>10}"
             mem_str  = color_value(temp_mem, 85.0, 95.0, 8, ".1f") if temp_mem > 0 else f"{'N/A':>8}"
+            gfx_str  = f"{gfx_freq:9.0f}"
+            vram_clk_str = f"{vram_freq:14.0f}" if vram_freq > 0 else f"{'N/A':>14}"
             
             # Fan speed formatting (RPM or PWM percentage fallback)
             if fan_type == "rpm":
@@ -168,9 +193,6 @@ def main():
             else:
                 fan_exists = os.path.exists(os.path.join(hwmon_dir, "fan1_input")) or os.path.exists(os.path.join(hwmon_dir, "pwm1"))
                 fan_str = f"{'0%':>11}" if fan_exists else f"{'N/A':>11}"
-            
-            gfx_str  = f"{gfx_freq:9.0f}"
-            vram_clk_str = f"{vram_freq:14.0f}" if vram_freq > 0 else f"{'N/A':>14}"
             
             # Formatting Memory Allocations
             vram_ratio_str = f"{vram_used:5.0f}/{vram_total:<5.0f} MB"
@@ -188,7 +210,7 @@ def main():
 
             # Write to CSV
             with open(CSV_PATH, 'a') as f:
-                f.write(f"{t_str},{power:.2f},{gpu_volt:.3f},{temp_edge:.1f},{temp_junc:.1f},{temp_mem:.1f},{fan:.0f},{gfx_freq:.0f},{vram_freq:.0f},{vram_used:.1f},{vram_total:.1f},{gtt_used:.1f},{gtt_total:.1f}\n")
+                f.write(f"{t_str},{VERSION},{power:.2f},{gpu_volt:.3f},{temp_edge:.1f},{temp_junc:.1f},{temp_mem:.1f},{fan:.0f},{gfx_freq:.0f},{vram_freq:.0f},{vram_used:.1f},{vram_total:.1f},{gtt_used:.1f},{gtt_total:.1f}\n")
                 f.flush()
                 os.fsync(f.fileno())
 

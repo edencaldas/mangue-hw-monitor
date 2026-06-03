@@ -3,12 +3,32 @@ import time
 import os
 import sys
 
-# Paths to sysfs attributes for amdgpu hwmon1
-HWMON_DIR = "/sys/class/drm/card1/device/hwmon/hwmon1"
 CSV_PATH = "gpu_monitor_log.csv"
 
-def read_sysfs(filename, divisor=1):
-    path = os.path.join(HWMON_DIR, filename)
+def find_gpu_paths():
+    # Scan cards in sysfs dynamically
+    base_dir = "/sys/class/drm"
+    if not os.path.exists(base_dir):
+        return None, None
+    for card in os.listdir(base_dir):
+        if card.startswith("card") and not "-" in card:
+            card_path = os.path.join(base_dir, card, "device")
+            hwmon_base = os.path.join(card_path, "hwmon")
+            if os.path.exists(hwmon_base):
+                for hwmon in os.listdir(hwmon_base):
+                    hwmon_path = os.path.join(hwmon_base, hwmon)
+                    name_file = os.path.join(hwmon_path, "name")
+                    if os.path.exists(name_file):
+                        try:
+                            with open(name_file, 'r') as f:
+                                if f.read().strip() == "amdgpu":
+                                    return card_path, hwmon_path
+                        except Exception:
+                            continue
+    return None, None
+
+def read_sysfs(hwmon_dir, filename, divisor=1):
+    path = os.path.join(hwmon_dir, filename)
     try:
         with open(path, 'r') as f:
             val = f.read().strip()
@@ -16,52 +36,91 @@ def read_sysfs(filename, divisor=1):
     except Exception:
         return 0.0
 
+def read_gpu_mem(device_path, filename):
+    path = os.path.join(device_path, filename)
+    try:
+        with open(path, 'r') as f:
+            val = int(f.read().strip())
+            return val / 1024 / 1024  # bytes to MB
+    except Exception:
+        return 0.0
+
+def color_value(val, warn_limit, crit_limit, width, format_spec=".1f"):
+    val_str = f"{val:{width}{format_spec}}"
+    if val <= 0.0:
+        return val_str
+    if val >= crit_limit:
+        return f"\033[1m\033[31m{val_str}\033[0m"  # Bold Red
+    elif val >= warn_limit:
+        return f"\033[1m\033[33m{val_str}\033[0m"  # Bold Yellow
+    return val_str
+
 def main():
-    if not os.path.exists(HWMON_DIR):
-        print(f"Error: HWMON directory not found: {HWMON_DIR}")
-        print("Please check if your RX 7600 is currently running and using the amdgpu driver.")
+    device_path, hwmon_dir = find_gpu_paths()
+    if not hwmon_dir:
+        print("Error: Active AMD GPU hwmon directory not found.")
+        print("Please check if your GPU is running and using the amdgpu driver.")
         sys.exit(1)
 
     print(f"Starting GPU Telemetry Logger...")
-    print(f"Writing to: {os.path.abspath(CSV_PATH)}")
+    print(f"Located GPU Device at: {device_path}")
+    print(f"Located GPU HWMON at:  {hwmon_dir}")
+    print(f"Writing to:            {os.path.abspath(CSV_PATH)}")
     print("Press Ctrl+C to stop.")
-    print("-" * 80)
-    print(f"{'Time':19} | {'Power (W)':9} | {'Edge (°C)':9} | {'Junct (°C)':10} | {'Mem (°C)':8} | {'Fan (RPM)':9} | {'GFX (MHz)':9}")
-    print("-" * 80)
+    print("-" * 120)
+    print(f"{'Time':19} | {'Power (W)':9} | {'Edge (°C)':9} | {'Junct (°C)':10} | {'Mem (°C)':8} | {'Fan (RPM)':9} | {'GFX (MHz)':9} | {'VRAM (Used/Total)':17} | {'GTT (Used/Total)':16}")
+    print("-" * 120)
 
     # Initialize CSV if it doesn't exist
     if not os.path.exists(CSV_PATH):
         with open(CSV_PATH, 'w') as f:
-            f.write("timestamp,power_watts,edge_temp_c,junction_temp_c,memory_temp_c,fan_rpm,gfx_freq_mhz\n")
+            f.write("timestamp,power_watts,edge_temp_c,junction_temp_c,memory_temp_c,fan_rpm,gfx_freq_mhz,vram_used_mb,vram_total_mb,gtt_used_mb,gtt_total_mb\n")
 
     try:
         while True:
-            # Timestamp
             t_str = time.strftime("%Y-%m-%d %H:%M:%S")
 
             # Metrics
-            # power1_average is in microwatts, convert to Watts
-            power = read_sysfs("power1_average", 1000000)
+            power = read_sysfs(hwmon_dir, "power1_average", 1000000)
+            temp_edge = read_sysfs(hwmon_dir, "temp1_input", 1000)
+            temp_junc = read_sysfs(hwmon_dir, "temp2_input", 1000)
+            temp_mem = read_sysfs(hwmon_dir, "temp3_input", 1000)
+            fan = read_sysfs(hwmon_dir, "fan1_input")
+            gfx_freq = read_sysfs(hwmon_dir, "freq1_input", 1000000)
+
+            # Memory allocation
+            vram_total = read_gpu_mem(device_path, "mem_info_vram_total")
+            vram_used = read_gpu_mem(device_path, "mem_info_vram_used")
+            gtt_total = read_gpu_mem(device_path, "mem_info_gtt_total")
+            gtt_used = read_gpu_mem(device_path, "mem_info_gtt_used")
+
+            # Warning boundaries: Edge (75C/85C), Junction/Mem (85C/95C)
+            power_str = f"{power:9.2f}"
+            edge_str = color_value(temp_edge, 75.0, 85.0, 9, ".1f")
+            junc_str = color_value(temp_junc, 85.0, 95.0, 10, ".1f") if temp_junc > 0 else f"{'N/A':>10}"
+            mem_str  = color_value(temp_mem, 85.0, 95.0, 8, ".1f") if temp_mem > 0 else f"{'N/A':>8}"
+            fan_str  = f"{fan:9.0f}" if fan > 0 else f"{'N/A':>9}"
+            gfx_str  = f"{gfx_freq:9.0f}"
             
-            # Temps are in millidegrees C, convert to C
-            temp_edge = read_sysfs("temp1_input", 1000)
-            temp_junc = read_sysfs("temp2_input", 1000)
-            temp_mem = read_sysfs("temp3_input", 1000)
+            # Formatting Memory Allocations
+            vram_ratio_str = f"{vram_used:5.0f}/{vram_total:<5.0f} MB"
+            if vram_total > 0:
+                vram_pct = (vram_used / vram_total) * 100.0
+                if vram_pct >= 95.0:
+                    vram_ratio_str = f"\033[1m\033[31m{vram_ratio_str}\033[0m"
+                elif vram_pct >= 85.0:
+                    vram_ratio_str = f"\033[1m\033[33m{vram_ratio_str}\033[0m"
             
-            # Fan speed in RPM
-            fan = read_sysfs("fan1_input")
-            
-            # Frequencies are in Hz, convert to MHz
-            gfx_freq = read_sysfs("freq1_input", 1000000)
+            gtt_ratio_str = f"{gtt_used:5.0f}/{gtt_total:<5.0f} MB"
 
             # Print to console
-            print(f"{t_str} | {power:9.2f} | {temp_edge:9.1f} | {temp_junc:10.1f} | {temp_mem:8.1f} | {fan:9.0f} | {gfx_freq:9.0f}")
+            print(f"{t_str} | {power_str} | {edge_str} | {junc_str} | {mem_str} | {fan_str} | {gfx_str} | {vram_ratio_str:17} | {gtt_ratio_str:16}")
 
-            # Append to CSV and force flush to disk
+            # Write to CSV
             with open(CSV_PATH, 'a') as f:
-                f.write(f"{t_str},{power:.2f},{temp_edge:.1f},{temp_junc:.1f},{temp_mem:.1f},{fan:.0f},{gfx_freq:.0f}\n")
+                f.write(f"{t_str},{power:.2f},{temp_edge:.1f},{temp_junc:.1f},{temp_mem:.1f},{fan:.0f},{gfx_freq:.0f},{vram_used:.1f},{vram_total:.1f},{gtt_used:.1f},{gtt_total:.1f}\n")
                 f.flush()
-                os.fsync(f.fileno())  # Bypass OS page cache and force physical write to disk
+                os.fsync(f.fileno())
 
             time.sleep(1)
 

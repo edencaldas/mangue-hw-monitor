@@ -71,7 +71,26 @@ def read_cpu_temps(hwmon_dirs):
                     
     return tctl, tccd
 
-
+def read_cpu_power_voltage(hwmon_dirs):
+    power = 0.0
+    voltage = 0.0
+    for drv_name, path in hwmon_dirs:
+        if drv_name == "zenpower":
+            try:
+                # power1_input is SVI2 Core Power or Package Power in zenpower (in microwatts)
+                power_file = os.path.join(path, "power1_input")
+                if os.path.exists(power_file):
+                    with open(power_file, 'r') as file:
+                        power = float(file.read().strip()) / 1000000.0  # uW to W
+                
+                # in0_input is SVI2 Core Voltage (in millivolts)
+                volt_file = os.path.join(path, "in0_input")
+                if os.path.exists(volt_file):
+                    with open(volt_file, 'r') as file:
+                        voltage = float(file.read().strip()) / 1000.0  # mV to V
+            except Exception:
+                pass
+    return power, voltage
 
 def get_cpu_freqs():
     freqs = []
@@ -82,13 +101,39 @@ def get_cpu_freqs():
                 freq_file = os.path.join(base_path, cpu, "cpufreq/scaling_cur_freq")
                 if os.path.exists(freq_file):
                     with open(freq_file, 'r') as f:
-                        freqs.append(float(f.read().strip()) / 1000.0) # convert KHz to MHz
+                        freqs.append(float(f.read().strip()) / 1000.0)  # KHz to MHz
     except Exception:
         pass
     return sum(freqs) / len(freqs) if freqs else 0.0
 
+def read_mem_info():
+    mem_total = 0.0
+    mem_avail = 0.0
+    swap_total = 0.0
+    swap_free = 0.0
+    try:
+        with open("/proc/meminfo", 'r') as f:
+            for line in f:
+                if line.startswith("MemTotal:"):
+                    mem_total = float(line.split()[1]) / 1024 / 1024  # KB to GB
+                elif line.startswith("MemAvailable:"):
+                    mem_avail = float(line.split()[1]) / 1024 / 1024
+                elif line.startswith("SwapTotal:"):
+                    swap_total = float(line.split()[1]) / 1024 / 1024
+                elif line.startswith("SwapFree:"):
+                    swap_free = float(line.split()[1]) / 1024 / 1024
+    except Exception:
+        pass
+    
+    mem_used = mem_total - mem_avail
+    mem_pct = (mem_used / mem_total * 100.0) if mem_total > 0 else 0.0
+    
+    swap_used = swap_total - swap_free
+    swap_pct = (swap_used / swap_total * 100.0) if swap_total > 0 else 0.0
+    
+    return mem_total, mem_used, mem_pct, swap_total, swap_used, swap_pct
+
 def read_proc_stat():
-    # Reads /proc/stat and returns dictionary of {core_name: [user, nice, system, idle, iowait, irq, softirq, steal]}
     stats = {}
     try:
         with open("/proc/stat", 'r') as f:
@@ -103,18 +148,15 @@ def read_proc_stat():
     return stats
 
 def calculate_cpu_load(prev_ticks, curr_ticks):
-    # Calculates load percentages for each core based on ticks difference
     loads = {}
     for core in curr_ticks:
         if core in prev_ticks:
             prev = prev_ticks[core]
             curr = curr_ticks[core]
             
-            # Idle time = idle + iowait
             prev_idle = prev[3] + prev[4]
             curr_idle = curr[3] + curr[4]
             
-            # Non-idle time = user + nice + system + irq + softirq + steal
             prev_non_idle = prev[0] + prev[1] + prev[2] + prev[5] + prev[6] + prev[7]
             curr_non_idle = curr[0] + curr[1] + curr[2] + curr[5] + curr[6] + curr[7]
             
@@ -131,10 +173,18 @@ def calculate_cpu_load(prev_ticks, curr_ticks):
                 loads[core] = 0.0
     return loads
 
+def color_value(val, warn_limit, crit_limit, width, format_spec=".1f"):
+    val_str = f"{val:{width}{format_spec}}"
+    if val >= crit_limit:
+        return f"\033[1m\033[31m{val_str}\033[0m"  # Bold Red
+    elif val >= warn_limit:
+        return f"\033[1m\033[33m{val_str}\033[0m"  # Bold Yellow
+    return val_str
+
 def main():
     hwmon_dirs = find_cpu_hwmon_dirs()
     if not hwmon_dirs:
-        print("Warning: Neither k10temp nor zenpower sensor directory found. CPU temperatures will not be logged.")
+        print("Warning: Neither k10temp nor zenpower sensor directory found. CPU temperatures/power will not be logged.")
     else:
         paths_str = ", ".join([f"{drv_name} ({path})" for drv_name, path in hwmon_dirs])
         print(f"Located CPU sensor(s) at: {paths_str}")
@@ -142,7 +192,12 @@ def main():
     # Set up CSV Header with individual core columns (assuming 12 threads)
     if not os.path.exists(CSV_PATH):
         with open(CSV_PATH, 'w') as f:
-            headers = ["timestamp", "cpu_avg_load", "temp_tctl", "temp_tccd", "avg_freq_mhz"]
+            headers = [
+                "timestamp", "cpu_avg_load", "temp_tctl", "temp_tccd", 
+                "avg_freq_mhz", "cpu_power_w", "cpu_volt_v",
+                "ram_used_gb", "ram_total_gb", "ram_pct",
+                "swap_used_gb", "swap_total_gb"
+            ]
             for i in range(12):
                 headers.append(f"cpu{i}_load")
             f.write(",".join(headers) + "\n")
@@ -150,11 +205,11 @@ def main():
     print(f"Starting CPU Telemetry Logger...")
     print(f"Writing to: {os.path.abspath(CSV_PATH)}")
     print("Press Ctrl+C to stop.")
-    print("-" * 100)
-    print(f"{'Time':19} | {'Avg Load':8} | {'Tctl (°C)':9} | {'Tccd (°C)':9} | {'Avg Freq (MHz)':14} | Core Loads")
-    print("-" * 100)
+    print("-" * 125)
+    print(f"{'Time':19} | {'Avg Load':8} | {'Tctl (°C)':9} | {'Tccd (°C)':9} | {'Avg Freq (MHz)':14} | {'Power (W)':9} | {'Volt (V)':8} | {'RAM (Used/Total)':16} | Core Loads")
+    print("-" * 125)
 
-    # Prime the CPU ticks
+    # Prime CPU ticks
     prev_stats = read_proc_stat()
     time.sleep(1)
 
@@ -165,10 +220,14 @@ def main():
             loads = calculate_cpu_load(prev_stats, curr_stats)
             prev_stats = curr_stats
 
-            # Core Metrics
+            # Metrics
             avg_load = loads.get("cpu", 0.0)
             tctl, tccd = read_cpu_temps(hwmon_dirs)
             avg_freq = get_cpu_freqs()
+            cpu_power, cpu_volt = read_cpu_power_voltage(hwmon_dirs)
+            
+            # RAM & Swap Info
+            mem_total, mem_used, mem_pct, swap_total, swap_used, swap_pct = read_mem_info()
 
             # Compile individual core loads (cpu0 to cpu11)
             core_loads_str = ""
@@ -181,12 +240,33 @@ def main():
                 symbol = str(int(l_val / 10)) if l_val < 100 else "*"
                 core_loads_str += symbol
 
-            # Print dashboard line
-            print(f"{t_str} | {avg_load:7.1f}% | {tctl:9.1f} | {tccd:9.1f} | {avg_freq:14.1f} | [{core_loads_str}]")
+            # Formatting & Color-Coding
+            load_str = color_value(avg_load, 85.0, 95.0, 7, ".1f") + "%"
+            tctl_str = color_value(tctl, 75.0, 85.0, 9, ".1f")
+            tccd_str = color_value(tccd, 75.0, 85.0, 9, ".1f")
+            freq_str = f"{avg_freq:14.1f}"
+            
+            # CPU Power & Voltage Display (N/A if not available)
+            power_str = f"{cpu_power:9.2f}" if cpu_power > 0 else f"{'N/A':>9}"
+            volt_str = f"{cpu_volt:8.3f}" if cpu_volt > 0 else f"{'N/A':>8}"
+            
+            # RAM Formatting
+            ram_ratio_str = f"{mem_used:4.1f}/{mem_total:<4.1f} GB"
+            if mem_pct >= 95.0:
+                ram_ratio_str = f"\033[1m\033[31m{ram_ratio_str}\033[0m"
+            elif mem_pct >= 85.0:
+                ram_ratio_str = f"\033[1m\033[33m{ram_ratio_str}\033[0m"
+
+            # Print to console
+            print(f"{t_str} | {load_str} | {tctl_str} | {tccd_str} | {freq_str} | {power_str} | {volt_str} | {ram_ratio_str:16} | [{core_loads_str}]")
 
             # Write to CSV and bypass OS caching
             with open(CSV_PATH, 'a') as f:
-                csv_line = f"{t_str},{avg_load:.2f},{tctl:.1f},{tccd:.1f},{avg_freq:.1f}," + ",".join(core_csv_values) + "\n"
+                csv_line = (
+                    f"{t_str},{avg_load:.2f},{tctl:.1f},{tccd:.1f},{avg_freq:.1f},"
+                    f"{cpu_power:.2f},{cpu_volt:.3f},{mem_used:.2f},{mem_total:.2f},{mem_pct:.1f},"
+                    f"{swap_used:.2f},{swap_total:.2f}," + ",".join(core_csv_values) + "\n"
+                )
                 f.write(csv_line)
                 f.flush()
                 os.fsync(f.fileno())

@@ -14,7 +14,7 @@ To monitor both CPU and GPU metrics in real-time, open two separate terminal tab
 ```bash
 ./mangue_monitor_gpu.py
 ```
-* **Telemetry tracked:** Board Power Draw (W), Edge Temp (°C), Junction Temp (°C), VRAM Temp (°C), Fan Speed (RPM), GFX Core Frequency (MHz), VRAM Allocation (Used/Total MB), and GTT System Memory Allocation (Used/Total MB).
+* **Telemetry tracked:** Board Power Draw (W), Edge Temp (°C), Junction Temp (°C), VRAM Temp (°C), Fan Speed (RPM), GFX Core Frequency (MHz), VRAM Memory Clock Speed (MHz), VRAM Allocation (Used/Total MB), and GTT System Memory Allocation (Used/Total MB).
 * **Disk log file:** `gpu_monitor_log.csv`
 
 ### 2. Start the CPU Monitor (Tab 2)
@@ -34,7 +34,8 @@ To monitor both CPU and GPU metrics in real-time, open two separate terminal tab
 * **Junct (°C):** Silicon junction temperature (hottest spot on die). Displays `N/A` on older cards like the RX 550.
 * **Mem (°C):** Graphic VRAM memory temperature. Displays `N/A` on older cards like the RX 550.
 * **Fan (RPM):** Cooler rotational speed. Displays `N/A` if the card uses a 2-pin connector or passive cooling.
-* **GFX (MHz):** Core graphics engine clock speed.
+* **GFX (MHz):** Core graphics engine clock speed (SCLK).
+* **VRAM Clk (MHz):** Core graphics memory clock speed (MCLK).
 * **VRAM (Used/Total):** Dedicated video memory usage in MB.
 * **GTT (Used/Total):** Graphics Translation Table memory (shared RAM allocated to graphics) in MB.
 

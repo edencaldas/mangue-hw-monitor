@@ -67,14 +67,14 @@ def main():
     print(f"Located GPU HWMON at:  {hwmon_dir}")
     print(f"Writing to:            {os.path.abspath(CSV_PATH)}")
     print("Press Ctrl+C to stop.")
-    print("-" * 120)
-    print(f"{'Time':19} | {'Power (W)':9} | {'Edge (°C)':9} | {'Junct (°C)':10} | {'Mem (°C)':8} | {'Fan (RPM)':9} | {'GFX (MHz)':9} | {'VRAM (Used/Total)':17} | {'GTT (Used/Total)':16}")
-    print("-" * 120)
+    print("-" * 135)
+    print(f"{'Time':19} | {'Power (W)':9} | {'Edge (°C)':9} | {'Junct (°C)':10} | {'Mem (°C)':8} | {'Fan (RPM)':9} | {'GFX (MHz)':9} | {'VRAM Clk (MHz)':14} | {'VRAM (Used/Total)':17} | {'GTT (Used/Total)':16}")
+    print("-" * 135)
 
     # Initialize CSV if it doesn't exist
     if not os.path.exists(CSV_PATH):
         with open(CSV_PATH, 'w') as f:
-            f.write("timestamp,power_watts,edge_temp_c,junction_temp_c,memory_temp_c,fan_rpm,gfx_freq_mhz,vram_used_mb,vram_total_mb,gtt_used_mb,gtt_total_mb\n")
+            f.write("timestamp,power_watts,edge_temp_c,junction_temp_c,memory_temp_c,fan_rpm,gfx_freq_mhz,vram_freq_mhz,vram_used_mb,vram_total_mb,gtt_used_mb,gtt_total_mb\n")
 
     try:
         while True:
@@ -87,6 +87,7 @@ def main():
             temp_mem = read_sysfs(hwmon_dir, "temp3_input", 1000)
             fan = read_sysfs(hwmon_dir, "fan1_input")
             gfx_freq = read_sysfs(hwmon_dir, "freq1_input", 1000000)
+            vram_freq = read_sysfs(hwmon_dir, "freq2_input", 1000000)
 
             # Memory allocation
             vram_total = read_gpu_mem(device_path, "mem_info_vram_total")
@@ -101,6 +102,7 @@ def main():
             mem_str  = color_value(temp_mem, 85.0, 95.0, 8, ".1f") if temp_mem > 0 else f"{'N/A':>8}"
             fan_str  = f"{fan:9.0f}" if fan > 0 else f"{'N/A':>9}"
             gfx_str  = f"{gfx_freq:9.0f}"
+            vram_clk_str = f"{vram_freq:14.0f}" if vram_freq > 0 else f"{'N/A':>14}"
             
             # Formatting Memory Allocations
             vram_ratio_str = f"{vram_used:5.0f}/{vram_total:<5.0f} MB"
@@ -114,11 +116,11 @@ def main():
             gtt_ratio_str = f"{gtt_used:5.0f}/{gtt_total:<5.0f} MB"
 
             # Print to console
-            print(f"{t_str} | {power_str} | {edge_str} | {junc_str} | {mem_str} | {fan_str} | {gfx_str} | {vram_ratio_str:17} | {gtt_ratio_str:16}")
+            print(f"{t_str} | {power_str} | {edge_str} | {junc_str} | {mem_str} | {fan_str} | {gfx_str} | {vram_clk_str} | {vram_ratio_str:17} | {gtt_ratio_str:16}")
 
             # Write to CSV
             with open(CSV_PATH, 'a') as f:
-                f.write(f"{t_str},{power:.2f},{temp_edge:.1f},{temp_junc:.1f},{temp_mem:.1f},{fan:.0f},{gfx_freq:.0f},{vram_used:.1f},{vram_total:.1f},{gtt_used:.1f},{gtt_total:.1f}\n")
+                f.write(f"{t_str},{power:.2f},{temp_edge:.1f},{temp_junc:.1f},{temp_mem:.1f},{fan:.0f},{gfx_freq:.0f},{vram_freq:.0f},{vram_used:.1f},{vram_total:.1f},{gtt_used:.1f},{gtt_total:.1f}\n")
                 f.flush()
                 os.fsync(f.fileno())
 

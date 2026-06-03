@@ -77,17 +77,41 @@ def read_cpu_power_voltage(hwmon_dirs):
     for drv_name, path in hwmon_dirs:
         if drv_name == "zenpower":
             try:
-                # power1_input is SVI2 Core Power or Package Power in zenpower (in microwatts)
+                # Scan for SVI2 Core Voltage dynamically using labels
+                for f in os.listdir(path):
+                    if f.startswith("in") and f.endswith("_label"):
+                        label_path = os.path.join(path, f)
+                        with open(label_path, 'r') as file:
+                            label = file.read().strip().lower()
+                        
+                        # Match "svi2_core", "svi2 core", or similar voltage label
+                        if "svi2" in label and "core" in label and "volt" in label:
+                            prefix = f[:-6]  # e.g., 'in0' from 'in0_label'
+                            input_path = os.path.join(path, f"{prefix}_input")
+                            if os.path.exists(input_path):
+                                with open(input_path, 'r') as file:
+                                    voltage = float(file.read().strip()) / 1000000.0  # uV to V
+                                    break
+                        elif "svi2_core" in label or "svi2 core" in label or "vcore" in label:
+                            prefix = f[:-6]
+                            input_path = os.path.join(path, f"{prefix}_input")
+                            if os.path.exists(input_path):
+                                with open(input_path, 'r') as file:
+                                    voltage = float(file.read().strip()) / 1000000.0  # uV to V
+                                    break
+
+                # Fallback if label scan did not yield a result
+                if voltage == 0.0:
+                    volt_file = os.path.join(path, "in0_input")
+                    if os.path.exists(volt_file):
+                        with open(volt_file, 'r') as file:
+                            voltage = float(file.read().strip()) / 1000000.0  # uV to V
+                
+                # SVI2 Core Power (in microwatts)
                 power_file = os.path.join(path, "power1_input")
                 if os.path.exists(power_file):
                     with open(power_file, 'r') as file:
                         power = float(file.read().strip()) / 1000000.0  # uW to W
-                
-                # in0_input is SVI2 Core Voltage (in millivolts)
-                volt_file = os.path.join(path, "in0_input")
-                if os.path.exists(volt_file):
-                    with open(volt_file, 'r') as file:
-                        voltage = float(file.read().strip()) / 1000.0  # mV to V
             except Exception:
                 pass
     return power, voltage

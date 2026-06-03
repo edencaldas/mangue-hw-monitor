@@ -113,15 +113,13 @@ def color_value(val, warn_limit, crit_limit, width, format_spec=".1f"):
         return f"\033[1m\033[33m{val_str}\033[0m"  # Bold Yellow
     return val_str
 
-def check_and_migrate_csv(csv_path, headers):
+def check_and_replace_csv(csv_path, headers):
     if os.path.exists(csv_path):
         try:
             with open(csv_path, 'r') as f:
                 first_line = f.readline().strip()
             if first_line != ",".join(headers):
-                backup_path = csv_path.replace(".csv", f"_backup_{int(time.time())}.csv")
-                print(f"CSV schema mismatch detected. Backing up old log to: {os.path.basename(backup_path)}")
-                os.rename(csv_path, backup_path)
+                os.remove(csv_path)
         except Exception:
             pass
 
@@ -148,8 +146,8 @@ def main():
         "vram_used_mb", "vram_total_mb", "gtt_used_mb", "gtt_total_mb"
     ]
 
-    # Migrate log if schema changed
-    check_and_migrate_csv(CSV_PATH, headers)
+    # Replace log if schema changed
+    check_and_replace_csv(CSV_PATH, headers)
 
     # Initialize CSV if it doesn't exist
     if not os.path.exists(CSV_PATH):

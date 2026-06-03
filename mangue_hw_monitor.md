@@ -72,12 +72,12 @@ To make real-time monitoring easy to read, both scripts output ANSI color indica
 
 ---
 
-## 💾 Versioning & Schema Migration
+## 💾 Versioning & Schema Verification
 
 Both scripts follow a 3-number **Semantic Versioning** scheme (`MAJOR.MINOR.PATCH`).
 * The baseline feature-complete release is tagged **`0.1.0`**.
 * The current script version is logged inside **every row** of the CSV log files in the second column (`script_version`). This ensures that if logs are shared, the producing code version is explicitly identifiable.
-* **Automatic Schema Backup:** If a script detects an existing log file with a mismatched header schema (e.g. from an older version), it will automatically rename the old file to a timestamped backup (e.g. `cpu_monitor_log_backup_1780529517.csv`) and start a fresh log to prevent data misalignment.
+* **Automatic Schema Replacement:** If a script detects an existing log file with a mismatched header schema (e.g. from an older version), it will automatically delete and replace the old file with a fresh log containing the correct header layout to prevent data misalignment.
 
 ---
 

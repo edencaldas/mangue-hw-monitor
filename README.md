@@ -14,7 +14,7 @@ To monitor both CPU and GPU metrics in real-time, open two separate terminal tab
 ```bash
 ./mangue_monitor_gpu.py
 ```
-* **Telemetry tracked:** Board Power Draw (W), Core Graphics Voltage (V), Edge Temp (°C), Junction Temp (°C), VRAM Temp (°C), Fan Speed (RPM), GFX Core Frequency (MHz), VRAM Memory Clock Speed (MHz), VRAM Allocation (Used/Total MB), and GTT System Memory Allocation (Used/Total MB).
+* **Telemetry tracked:** Board Power Draw (W), Core Graphics Voltage (V), Edge Temp (°C), Junction Temp (°C), VRAM Temp (°C), Fan Speed (RPM/%), GFX Core Frequency (MHz), VRAM Memory Clock Speed (MHz), VRAM Allocation (Used/Total MB), and GTT System Memory Allocation (Used/Total MB).
 * **Disk log file:** `gpu_monitor_log.csv`
 
 ### 2. Start the CPU Monitor (Tab 2)
@@ -38,7 +38,7 @@ sudo ./mangue_monitor_cpu.py
 * **Edge (°C):** Primary GPU package core temperature.
 * **Junct (°C):** Silicon junction temperature (hottest spot on die). Displays `N/A` on older cards like the RX 550.
 * **Mem (°C):** Graphic VRAM memory temperature. Displays `N/A` on older cards like the RX 550.
-* **Fan (RPM):** Cooler rotational speed. Displays `N/A` if the card uses a 2-pin connector or passive cooling.
+* **Fan (RPM/%):** Cooler rotational speed. Displays raw RPM if supported, falls back to PWM duty cycle percentage (e.g., `29%`) if the card's RPM tachometer sensor is unsupported/returns errors, and displays `N/A` for passively cooled or unmonitored cards.
 * **GFX (MHz):** Core graphics engine clock speed (SCLK).
 * **VRAM Clk (MHz):** Core graphics memory clock speed (MCLK).
 * **VRAM (Used/Total):** Dedicated video memory usage in MB.

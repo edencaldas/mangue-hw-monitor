@@ -3,7 +3,7 @@ import time
 import os
 import sys
 
-VERSION = "0.1.0"
+VERSION = "0.1.1"
 CSV_PATH = "cpu_monitor_log.csv"
 RAPL_ENERGY_FILE = "/sys/class/powercap/intel-rapl/intel-rapl:0/energy_uj"
 rapl_state = {"prev_energy": 0.0, "prev_time": 0.0}
@@ -115,14 +115,14 @@ def read_cpu_power_voltage(hwmon_dirs):
                             input_path = os.path.join(path, f"{prefix}_input")
                             if os.path.exists(input_path):
                                 with open(input_path, 'r') as file:
-                                    voltage = float(file.read().strip()) / 1000000.0  # uV to V
+                                    voltage = float(file.read().strip()) / 1000.0  # mV to V
                                     break
                         elif "svi2_core" in label or "svi2 core" in label or "vcore" in label:
                             prefix = f[:-6]
                             input_path = os.path.join(path, f"{prefix}_input")
                             if os.path.exists(input_path):
                                 with open(input_path, 'r') as file:
-                                    voltage = float(file.read().strip()) / 1000000.0  # uV to V
+                                    voltage = float(file.read().strip()) / 1000.0  # mV to V
                                     break
 
                 # Fallback if label scan did not yield a result
@@ -130,7 +130,7 @@ def read_cpu_power_voltage(hwmon_dirs):
                     volt_file = os.path.join(path, "in0_input")
                     if os.path.exists(volt_file):
                         with open(volt_file, 'r') as file:
-                            voltage = float(file.read().strip()) / 1000000.0  # uV to V
+                            voltage = float(file.read().strip()) / 1000.0  # mV to V
                 
                 # SVI2 Core Power (in microwatts)
                 power_file = os.path.join(path, "power1_input")

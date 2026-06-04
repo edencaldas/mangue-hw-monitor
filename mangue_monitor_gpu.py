@@ -3,7 +3,7 @@ import time
 import os
 import sys
 
-VERSION = "0.1.0"
+VERSION = "0.1.1"
 CSV_PATH = "gpu_monitor_log.csv"
 
 def find_gpu_paths():

@@ -76,8 +76,23 @@ To make real-time monitoring easy to read, both scripts output ANSI color indica
 
 Both scripts follow a 3-number **Semantic Versioning** scheme (`MAJOR.MINOR.PATCH`).
 * The baseline feature-complete release is tagged **`0.1.0`**.
+* The current release is **`0.1.1`**, which fixes the CPU core voltage scaling divisor issue on platforms using the `zenpower` driver.
 * The current script version is logged inside **every row** of the CSV log files in the second column (`script_version`). This ensures that if logs are shared, the producing code version is explicitly identifiable.
 * **Automatic Schema Replacement:** If a script detects an existing log file with a mismatched header schema (e.g. from an older version), it will automatically delete and replace the old file with a fresh log containing the correct header layout to prevent data misalignment.
+
+---
+
+## 🔍 Hardware Diagnostic Script (`mangue_hw_info.py`)
+
+If you are running the telemetry scripts on a new system or troubleshooting missing metrics (such as `N/A` for Power or Voltage), run the hardware diagnostic script to query and export your system paths and raw sensor attributes:
+
+```bash
+./mangue_hw_info.py
+```
+
+* **What it does:** Collects kernel version, motherboard & BIOS details, CPU specifications, memory capacity, all `/sys/class/hwmon` directories (including raw labels and input files), and GPU card DRM diagnostics (VRAM allocation status, performance states, clocks).
+* **Output report:** Generates `mangue_hw_info_report.txt` and prints the telemetry summary to the console.
+* **Privileged read:** Can be run with `sudo ./mangue_hw_info.py` if certain BIOS or DMI attributes are restricted to root on the target OS.
 
 ---
 

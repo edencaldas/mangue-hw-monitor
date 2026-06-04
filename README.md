@@ -14,7 +14,7 @@ To monitor both CPU and GPU metrics in real-time, open two separate terminal tab
 ```bash
 ./mangue_monitor_gpu.py
 ```
-* **Telemetry tracked:** Board Power Draw (W), Core Graphics Voltage (V), Edge Temp (°C), Junction Temp (°C), VRAM Temp (°C), Fan Speed (RPM/%), GFX Core Frequency (MHz), VRAM Memory Clock Speed (MHz), VRAM Allocation (Used/Total MB), and GTT System Memory Allocation (Used/Total MB).
+* **Telemetry tracked:** GPU Use (%), Board Power Draw (W), Core Graphics Voltage (V), Edge Temp (°C), Junction Temp (°C), VRAM Temp (°C), Fan Speed (RPM/%), GFX Core Frequency (MHz), VRAM Memory Clock Speed (MHz), VRAM Allocation (Used/Total MB), and GTT System Memory Allocation (Used/Total MB).
 * **Disk log file:** `gpu_monitor_log.csv`
 
 ### 2. Start the CPU Monitor (Tab 2)
@@ -33,6 +33,7 @@ sudo ./mangue_monitor_cpu.py
 ## 📊 Console Layout & Columns
 
 ### GPU Telemetry Console
+* **GPU Use (%):** Real-time GPU core engine activity/utilization percentage (e.g. `0.0%` to `100.0%`).
 * **Power (W):** Real-time board power consumption.
 * **Volt (V):** Core graphics engine voltage (VDDGFX) in Volts (e.g. `0.875 V`).
 * **Edge (°C):** Primary GPU package core temperature.

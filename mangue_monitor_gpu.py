@@ -3,7 +3,7 @@ import time
 import os
 import sys
 
-VERSION = "0.1.1"
+VERSION = "0.1.2"
 CSV_PATH = "gpu_monitor_log.csv"
 
 def find_gpu_paths():
@@ -45,6 +45,16 @@ def read_gpu_mem(device_path, filename):
             return val / 1024 / 1024  # bytes to MB
     except Exception:
         return 0.0
+
+def read_gpu_usage(device_path):
+    path = os.path.join(device_path, "gpu_busy_percent")
+    try:
+        if os.path.exists(path):
+            with open(path, 'r') as f:
+                return float(f.read().strip())
+    except Exception:
+        pass
+    return 0.0
 
 def read_gpu_voltage(hwmon_dir):
     try:
@@ -135,13 +145,13 @@ def main():
     print(f"Located GPU HWMON at:  {hwmon_dir}")
     print(f"Writing to:            {os.path.abspath(CSV_PATH)}")
     print("Press Ctrl+C to stop.")
-    print("-" * 148)
-    print(f"{'Time':19} | {'Power (W)':9} | {'Volt (V)':8} | {'Edge (°C)':9} | {'Junct (°C)':10} | {'Mem (°C)':8} | {'Fan (RPM/%)':11} | {'GFX (MHz)':9} | {'VRAM Clk (MHz)':14} | {'VRAM (Used/Total)':17} | {'GTT (Used/Total)':16}")
-    print("-" * 148)
+    print("-" * 162)
+    print(f"{'Time':19} | {'GPU Use (%)':11} | {'Power (W)':9} | {'Volt (V)':8} | {'Edge (°C)':9} | {'Junct (°C)':10} | {'Mem (°C)':8} | {'Fan (RPM/%)':11} | {'GFX (MHz)':9} | {'VRAM Clk (MHz)':14} | {'VRAM (Used/Total)':17} | {'GTT (Used/Total)':16}")
+    print("-" * 162)
 
     # Expected headers
     headers = [
-        "timestamp", "script_version", "power_watts", "gpu_volt_v", "edge_temp_c", 
+        "timestamp", "script_version", "gpu_use_pct", "power_watts", "gpu_volt_v", "edge_temp_c", 
         "junction_temp_c", "memory_temp_c", "fan_rpm", "gfx_freq_mhz", "vram_freq_mhz", 
         "vram_used_mb", "vram_total_mb", "gtt_used_mb", "gtt_total_mb"
     ]
@@ -159,6 +169,7 @@ def main():
             t_str = time.strftime("%Y-%m-%d %H:%M:%S")
 
             # Metrics
+            gpu_use = read_gpu_usage(device_path)
             power = read_sysfs(hwmon_dir, "power1_average", 1000000)
             gpu_volt = read_gpu_voltage(hwmon_dir)
             temp_edge = read_sysfs(hwmon_dir, "temp1_input", 1000)
@@ -175,6 +186,7 @@ def main():
             gtt_used = read_gpu_mem(device_path, "mem_info_gtt_used")
 
             # Warning boundaries: Edge (75C/85C), Junction/Mem (85C/95C)
+            gpu_use_str = color_value(gpu_use, 101.0, 101.0, 10, ".1f") + "%"
             power_str = f"{power:9.2f}"
             volt_str = f"{gpu_volt:8.3f}" if gpu_volt > 0 else f"{'N/A':>8}"
             edge_str = color_value(temp_edge, 75.0, 85.0, 9, ".1f")
@@ -204,11 +216,11 @@ def main():
             gtt_ratio_str = f"{gtt_used:5.0f}/{gtt_total:<5.0f} MB"
 
             # Print to console
-            print(f"{t_str} | {power_str} | {volt_str} | {edge_str} | {junc_str} | {mem_str} | {fan_str} | {gfx_str} | {vram_clk_str} | {vram_ratio_str:17} | {gtt_ratio_str:16}")
+            print(f"{t_str} | {gpu_use_str} | {power_str} | {volt_str} | {edge_str} | {junc_str} | {mem_str} | {fan_str} | {gfx_str} | {vram_clk_str} | {vram_ratio_str:17} | {gtt_ratio_str:16}")
 
             # Write to CSV
             with open(CSV_PATH, 'a') as f:
-                f.write(f"{t_str},{VERSION},{power:.2f},{gpu_volt:.3f},{temp_edge:.1f},{temp_junc:.1f},{temp_mem:.1f},{fan:.0f},{gfx_freq:.0f},{vram_freq:.0f},{vram_used:.1f},{vram_total:.1f},{gtt_used:.1f},{gtt_total:.1f}\n")
+                f.write(f"{t_str},{VERSION},{gpu_use:.1f},{power:.2f},{gpu_volt:.3f},{temp_edge:.1f},{temp_junc:.1f},{temp_mem:.1f},{fan:.0f},{gfx_freq:.0f},{vram_freq:.0f},{vram_used:.1f},{vram_total:.1f},{gtt_used:.1f},{gtt_total:.1f}\n")
                 f.flush()
                 os.fsync(f.fileno())
 
